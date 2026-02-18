@@ -1,0 +1,151 @@
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle('SINSFA EDUCACIÓN FÍSICA');
+}
+
+function buscarPorCedula(cedula) {
+
+  const spreadsheetId = "1R5CRVfYGDBpuasO0mlKwqk6Sxo8K5rKWDG4tQ1syZFk";
+
+  try {
+
+    if (!cedula || String(cedula).trim() === "") {
+      return { error: "Cédula vacía." };
+    }
+
+    const cedulaBuscada = String(cedula).replace(/\D/g, '');
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const hojas = ss.getSheets();
+
+    // 🔥 RECORRER HOJAS
+    for (let h = 0; h < hojas.length; h++) {
+
+      const sheet = hojas[h];
+      const nombreHoja = sheet.getName();
+
+      const lastRow = sheet.getLastRow();
+      const lastColumn = sheet.getLastColumn();
+
+      if (lastRow === 0) continue;
+
+      // 🔥 SOLO LEER VALORES PRIMERO (RÁPIDO)
+      const data = sheet.getRange(1,1,lastRow,lastColumn).getDisplayValues();
+
+      // 🔎 BUSCAR COLUMNA CEDULA
+      let filaEncabezadosIndex = -1;
+      let indexCedula = -1;
+
+      for (let i = 0; i < data.length; i++) {
+        for (let j = 0; j < data[i].length; j++) {
+
+          if (String(data[i][j]).toUpperCase().trim() === "CEDULA") {
+            filaEncabezadosIndex = i;
+            indexCedula = j;
+            break;
+          }
+        }
+        if (filaEncabezadosIndex !== -1) break;
+      }
+
+      if (filaEncabezadosIndex === -1) continue;
+
+      // 🔎 BUSCAR ESTUDIANTE SOLO CON VALORES
+      for (let i = filaEncabezadosIndex + 1; i < data.length; i++) {
+
+        const valorHoja = String(data[i][indexCedula] || "")
+          .replace(/\D/g, '')
+          .trim();
+
+        if (valorHoja === cedulaBuscada) {
+
+          // 🔥 SOLO AHORA CARGAMOS TODO LO PESADO
+          const rango = sheet.getRange(1,1,lastRow,lastColumn);
+
+          const notas = rango.getNotes();
+          const colores = rango.getBackgrounds();
+          const coloresTexto = rango.getFontColors();
+
+          // FILA SUPERIOR
+          const filaSuperiorIndex = filaEncabezadosIndex - 1 >= 0 ? filaEncabezadosIndex - 1 : null;
+
+          const filaSuperior = filaSuperiorIndex !== null ? data[filaSuperiorIndex] : [];
+          const filaSuperiorColores = filaSuperiorIndex !== null ? colores[filaSuperiorIndex] : [];
+          const filaSuperiorTexto = filaSuperiorIndex !== null ? coloresTexto[filaSuperiorIndex] : [];
+          const filaSuperiorNotas = filaSuperiorIndex !== null ? notas[filaSuperiorIndex] : [];
+
+          // MERGES
+          let mergesInfo = [];
+
+          if (filaSuperiorIndex !== null) {
+            const mergedRanges = sheet.getRange(
+              filaSuperiorIndex + 1,
+              1,
+              1,
+              lastColumn
+            ).getMergedRanges();
+
+            mergedRanges.forEach(r => {
+              mergesInfo.push({
+                start: r.getColumn() - 1,
+                colspan: r.getNumColumns(),
+                value: r.getDisplayValue(),
+                bg: r.getBackground(),
+                color: r.getFontColor(),
+                note: r.getNote()
+              });
+            });
+          }
+
+          // ALTURAS
+          let alturasFilas = [];
+          for (let r = 0; r < lastRow; r++) {
+            alturasFilas.push(sheet.getRowHeight(r + 1));
+          }
+
+          // ANCHOS
+          let anchosColumnas = [];
+          for (let c = 0; c < lastColumn; c++) {
+            anchosColumnas.push(sheet.getColumnWidth(c + 1));
+          }
+
+          const headers = data[filaEncabezadosIndex];
+          const headersColores = colores[filaEncabezadosIndex];
+          const headersTexto = coloresTexto[filaEncabezadosIndex];
+          const headersNotas = notas[filaEncabezadosIndex];
+
+          return {
+            curso: nombreHoja,
+
+            filaSuperior,
+            filaSuperiorColores,
+            filaSuperiorTexto,
+            filaSuperiorNotas: filaSuperiorNotas || [],
+
+            merges: mergesInfo,
+
+            headers,
+            headersColores,
+            headersTexto,
+            headersNotas: headersNotas || [],
+
+            datos: data[i],
+            notas: notas[i] || [],
+            colores: colores[i],
+            coloresTexto: coloresTexto[i],
+
+            alturasFilas,
+            anchosColumnas
+          };
+        }
+      }
+    }
+
+    return { error: "Estudiante no encontrado en ninguna pestaña." };
+
+  } catch (err) {
+    return {
+      error: "Error interno del servidor: " + err.message
+    };
+  }
+}
+
